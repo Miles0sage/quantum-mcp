@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pqc-posture"
+version = "0.1.0"
+description = "Post-Quantum Cryptography Posture Scanner — find quantum-vulnerable crypto in your codebase"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+authors = [
+    {name = "Miles Thompson", email = "miles@overseerclaw.uk"},
+]
+keywords = ["post-quantum", "cryptography", "security", "scanner", "pqc", "nist", "migration"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Security",
+    "Topic :: Security :: Cryptography",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.scripts]
+pqc-scan = "cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Miles0sage/quantum-mcp"
+"Bug Tracker" = "https://github.com/Miles0sage/quantum-mcp/issues"
+Source = "https://github.com/Miles0sage/quantum-mcp"
+
+[tool.setuptools]
+py-modules = ["pqc_posture", "cli"]

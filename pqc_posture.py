@@ -37,14 +37,21 @@ CRYPTO_PATTERNS = {
     "RSA Key Exchange": {
         "patterns": [
             r'RSA\.generate',
-            r'rsa\.generate_private_key',
+            r'rsa\w*\.generate_private_key',  # catches rsa_mod.generate_private_key
             r'PKCS1_OAEP',
             r'PKCS1_v1_5',
+            r'pkcs1v15',
             r'RSA_generate_key',
-            r'openssl_pkey_new.*RSA',
+            r'openssl_pkey_new',  # PHP — don't require RSA inline, it's in $config
             r'KeyPairGenerator\.getInstance\("RSA"',
+            r'Cipher\.getInstance\("RSA',  # Java Cipher.getInstance("RSA/ECB/...")
             r'crypto\.generateKeyPairSync\("rsa"',
+            r'generateKeyPairSync\("rsa"',  # Node.js destructured import
             r'rsa\.GenerateKey\(',
+            r'RsaPrivateKey::new',  # Rust rsa crate
+            r'RsaPublicKey::from',  # Rust rsa crate
+            r'RSA_2048',  # AWS KMS key spec
+            r'RSA_4096',  # AWS KMS key spec
         ],
         "category": "key_exchange",
         "risk": "CRITICAL",
@@ -144,9 +151,14 @@ CRYPTO_PATTERNS = {
         "patterns": [
             r'hashlib\.md5',
             r'MD5\.new',
+            r'MD5\(',  # C/C++ MD5() function
             r'MessageDigest\.getInstance\("MD5"',
-            r'crypto\.createHash\("md5"',
+            r'crypto\.createHash\([\'"]md5[\'"]',  # Node.js single or double quotes
+            r'createHash\([\'"]md5[\'"]',  # Node.js destructured
             r'md5\.New\(\)',
+            r'\bmd5\(',  # PHP md5() function
+            r'MD5PasswordHasher',  # Django
+            r'MD5_DIGEST_LENGTH',  # C OpenSSL
         ],
         "category": "hash",
         "risk": "HIGH",
@@ -160,8 +172,12 @@ CRYPTO_PATTERNS = {
             r'SHA\.new',
             r'SHA1\.new',
             r'MessageDigest\.getInstance\("SHA-1"',
-            r'crypto\.createHash\("sha1"',
+            r'crypto\.createHash\([\'"]sha1[\'"]',  # Node.js
+            r'createHash\([\'"]sha1[\'"]',  # Node.js destructured
+            r'createHmac\([\'"]sha1[\'"]',  # Node.js HMAC-SHA1
             r'sha1\.New\(\)',
+            r'\bsha1\(',  # PHP sha1() function
+            r'SHA1PasswordHasher',  # Django
         ],
         "category": "hash",
         "risk": "HIGH",
@@ -177,7 +193,9 @@ CRYPTO_PATTERNS = {
             r'DESede',
             r'TripleDES',
             r'DES3\.new',
-            r'crypto\.createCipheriv\("des',
+            r'crypto\.createCipheriv\([\'"]des',
+            r'DES-CBC',  # OpenSSL cipher suite names
+            r'DES-CBC3',  # 3DES cipher suite
         ],
         "category": "symmetric",
         "risk": "HIGH",
@@ -215,9 +233,12 @@ CRYPTO_PATTERNS = {
         "patterns": [
             r'TLSv1_0',
             r'TLSv1_1',
+            r'TLSv1\b',  # K8s/nginx annotations: "TLSv1 TLSv1.1"
+            r'TLSv1\.1\b',  # TLSv1.1 as a string
             r'SSLv3',
             r'ssl\.PROTOCOL_TLSv1\b',
             r'TLS_RSA_WITH',
+            r'SSL_PROTOCOLS.*TLSv1\b',  # nginx/envoy SSL protocol config
         ],
         "category": "protocol",
         "risk": "CRITICAL",
@@ -246,7 +267,8 @@ SKIP_DIRS = {'.git', 'node_modules', '__pycache__', '.venv', 'venv', 'dist',
              'build', '.next', '.tox', 'vendor', 'third_party'}
 SCAN_EXTENSIONS = {'.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.go', '.rs',
                    '.rb', '.php', '.cs', '.c', '.cpp', '.h', '.yaml', '.yml',
-                   '.toml', '.cfg', '.ini', '.conf'}
+                   '.toml', '.cfg', '.ini', '.conf', '.tf', '.hcl', '.json5',
+                   '.properties', '.xml', '.gradle', '.env.example'}
 
 # Test file indicators — findings here are LOWER priority
 TEST_INDICATORS = {'test_', '_test.', 'tests/', 'test/', 'spec/', '_spec.',
@@ -317,9 +339,17 @@ def scan_codebase(path: str) -> Dict:
                 if stripped.startswith('#') or stripped.startswith('//') or stripped.startswith('*'):
                     continue
 
+                # Strip inline comments before matching — avoids false positives
+                # from comments like "pass  # uses AES-256-GCM now"
+                code_part = stripped
+                if '#' in code_part and not ext == '.yaml' and not ext == '.yml' and not ext == '.cfg' and not ext == '.ini' and not ext == '.conf':
+                    code_part = code_part[:code_part.index('#')]
+                elif '//' in code_part:
+                    code_part = code_part[:code_part.index('//')]
+
                 for algo_name, config in CRYPTO_PATTERNS.items():
                     for pattern in config['patterns']:
-                        if re.search(pattern, line):
+                        if re.search(pattern, code_part):
                             rel_path = os.path.relpath(fpath, path)
                             adjusted_risk, context = _context_risk_multiplier(
                                 config['risk'], rel_path, stripped
@@ -351,7 +381,7 @@ def scan_codebase(path: str) -> Dict:
                     (r'import "crypto/', 'crypto (Go)'),
                     (r'use openssl', 'OpenSSL (Rust)'),
                 ]:
-                    if re.search(lib_pattern, line):
+                    if re.search(lib_pattern, code_part):
                         crypto_libs_found.add(lib_name)
 
     elapsed_ms = int((time.time() - start) * 1000)
