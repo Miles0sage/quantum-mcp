@@ -342,9 +342,9 @@ requests==2.31.0
 })
 r = scan_codebase(proj)
 # .txt not in scan extensions - should we catch this?
-test("requirements.txt not scanned (no .txt extension)",
-     r['files_scanned'] == 0,
-     f"Scanned {r['files_scanned']} — .txt not in extensions, expected behavior")
+test("requirements.txt NOW scanned (.txt extension added)",
+     r['files_scanned'] >= 1 and any('Crypto Dep' in f['algorithm'] for f in r['findings']),
+     f"Scanned {r['files_scanned']}, findings: {[f['algorithm'] for f in r['findings']]}")
 cleanup(proj)
 
 # D2: Python with crypto imports in .py

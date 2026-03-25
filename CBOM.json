@@ -1,0 +1,101 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-03-25T10:37:06Z",
+    "tools": [
+      {
+        "name": "PQC Posture Scanner",
+        "version": "0.1.0"
+      }
+    ],
+    "component": {
+      "name": "quantum-mcp",
+      "type": "application"
+    }
+  },
+  "cryptoProperties": {
+    "algorithms": [
+      {
+        "name": "RSA Key Exchange",
+        "occurrences": 8,
+        "quantumSafe": true
+      },
+      {
+        "name": "Diffie-Hellman",
+        "occurrences": 7,
+        "quantumSafe": true
+      },
+      {
+        "name": "ECDH",
+        "occurrences": 5,
+        "quantumSafe": true
+      },
+      {
+        "name": "ECDSA",
+        "occurrences": 13,
+        "quantumSafe": true
+      },
+      {
+        "name": "RSA Signature",
+        "occurrences": 3,
+        "quantumSafe": true
+      },
+      {
+        "name": "Ed25519",
+        "occurrences": 3,
+        "quantumSafe": true
+      },
+      {
+        "name": "DES/3DES",
+        "occurrences": 2,
+        "quantumSafe": true
+      },
+      {
+        "name": "AES-256",
+        "occurrences": 8,
+        "quantumSafe": true
+      },
+      {
+        "name": "AES-128",
+        "occurrences": 6,
+        "quantumSafe": true
+      },
+      {
+        "name": "TLS 1.0/1.1",
+        "occurrences": 4,
+        "quantumSafe": true
+      },
+      {
+        "name": "JWT with RSA/ECDSA",
+        "occurrences": 6,
+        "quantumSafe": true
+      },
+      {
+        "name": "DSA",
+        "occurrences": 1,
+        "quantumSafe": true
+      },
+      {
+        "name": "SHA-1",
+        "occurrences": 2,
+        "quantumSafe": true
+      },
+      {
+        "name": "MD5",
+        "occurrences": 2,
+        "quantumSafe": true
+      }
+    ],
+    "libraries": [
+      "OpenSSL (Rust)",
+      "crypto (Node.js)",
+      "ssl (Python)",
+      "cryptography (Python)",
+      "pyOpenSSL",
+      "hashlib (Python)",
+      "crypto (Go)"
+    ]
+  }
+}

@@ -1,0 +1,2 @@
+[console_scripts]
+pqc-scan = pqc_scan_cli:main

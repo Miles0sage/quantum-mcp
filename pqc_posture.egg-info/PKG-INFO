@@ -1,0 +1,131 @@
+Metadata-Version: 2.4
+Name: pqc-posture
+Version: 0.1.0
+Summary: Post-Quantum Cryptography Posture Scanner — find quantum-vulnerable crypto in your codebase
+Home-page: https://github.com/Miles0sage/quantum-mcp
+Author: Miles Thompson
+Author-email: Miles Thompson <miles@overseerclaw.uk>
+License: MIT
+Project-URL: Homepage, https://github.com/Miles0sage/quantum-mcp
+Project-URL: Bug Tracker, https://github.com/Miles0sage/quantum-mcp/issues
+Project-URL: Source, https://github.com/Miles0sage/quantum-mcp
+Keywords: post-quantum,cryptography,security,scanner,pqc,nist,migration
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Topic :: Security
+Classifier: Topic :: Security :: Cryptography
+Classifier: Topic :: Software Development :: Quality Assurance
+Classifier: Topic :: Software Development :: Testing
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Dynamic: author
+Dynamic: home-page
+Dynamic: requires-python
+
+# quantum-mcp
+
+**The world's first quantum computing MCP server.**
+
+Give any AI agent access to real quantum hardware, true random number generation, and post-quantum cryptography scanning -- in four tool calls.
+
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
+[![MCP Compatible](https://img.shields.io/badge/MCP-compatible-brightgreen.svg)](https://modelcontextprotocol.io)
+[![Qiskit](https://img.shields.io/badge/qiskit-2.3-6929C4.svg)](https://qiskit.org)
+[![Tools: 4](https://img.shields.io/badge/tools-4-orange.svg)](#tools)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+
+---
+
+## Tools
+
+| Tool | What it does |
+|------|-------------|
+| `quantum_random` | True quantum random bytes -- not PRNG, not `/dev/urandom`, actual quantum measurement |
+| `quantum_pqc_scan` | Scan any codebase for quantum-vulnerable crypto (RSA, ECDSA, DH, MD5, SHA-1, AES-128) |
+| `quantum_backends` | List available quantum backends with qubit counts, costs, and status |
+| `quantum_circuit` | Run arbitrary OpenQASM 2.0 circuits on simulator or IBM QPU |
+
+## Why Quantum?
+
+**Quantum randomness is physically unpredictable.** Classical PRNGs are deterministic -- given the seed, every output is reproducible. Quantum random numbers come from measuring superposition states where the outcome is fundamentally undetermined until observation. No seed. No pattern. No prediction. Not even in theory.
+
+**Post-quantum crypto scanning is not optional.** NIST finalized its post-quantum standards (ML-KEM, ML-DSA, SLH-DSA) in 2024. Every RSA key, every ECDSA signature, every Diffie-Hellman exchange in your codebase is a ticking clock. Harvest-now-decrypt-later attacks mean data encrypted today with vulnerable algorithms is already at risk. The migration deadline isn't "when quantum computers are ready" -- it's now.
+
+## Quick Start
+
+```bash
+pip install qiskit fastapi uvicorn
+python3 server.py
+# Running on http://localhost:8200
+```
+
+## MCP Configuration
+
+Add to your Claude Desktop or MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "quantum": {
+      "url": "http://localhost:8200",
+      "tools": ["quantum_random", "quantum_pqc_scan", "quantum_backends", "quantum_circuit"]
+    }
+  }
+}
+```
+
+## Live Demo
+
+**[quantum.overseerclaw.uk](https://quantum.overseerclaw.uk)** -- public instance, no auth required for simulator backend.
+
+```bash
+# Generate 256 bits of quantum randomness
+curl -X POST https://quantum.overseerclaw.uk/call \
+  -H "Content-Type: application/json" \
+  -d '{"tool":"quantum_random","args":{"n_bytes":32}}'
+
+# Scan a project for quantum-vulnerable crypto
+curl -X POST https://quantum.overseerclaw.uk/call \
+  -H "Content-Type: application/json" \
+  -d '{"tool":"quantum_pqc_scan","args":{"path":"/path/to/project"}}'
+```
+
+## PQC Scan Results: 33 Findings Across 7 Real Repos
+
+We ran `quantum_pqc_scan` against 7 production repositories. Results:
+
+| Risk | Count | Examples |
+|------|-------|---------|
+| CRITICAL | 14 | RSA key generation, ECDSA signing, Diffie-Hellman exchanges |
+| HIGH | 12 | SHA-1 hashing, DSA signatures, MD5 checksums |
+| MEDIUM | 7 | AES-128 encryption (Grover's halves effective key length) |
+
+Every finding includes the exact file, line number, matched pattern, and a concrete migration path to NIST PQC standards.
+
+## Backends
+
+| Backend | Qubits | Cost | Auth |
+|---------|--------|------|------|
+| Local simulator | 32 | Free | None |
+| IBM Quantum | 127 | $96/min (10 free min/month) | `IBM_QUANTUM_TOKEN` |
+| Origin Wukong | 72 | Free | `ORIGIN_QUANTUM_TOKEN` |
+
+## Environment Variables
+
+```
+IBM_QUANTUM_TOKEN=your_ibm_cloud_api_key
+IBM_QUANTUM_CRN=your_cloud_resource_name
+ORIGIN_QUANTUM_TOKEN=your_origin_token
+QUANTUM_MCP_PORT=8200
+```
+
+## License
+
+MIT

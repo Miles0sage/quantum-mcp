@@ -352,6 +352,7 @@ SCAN_EXTENSIONS = {'.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.go', '.rs',
                    '.toml', '.cfg', '.ini', '.conf', '.tf', '.hcl', '.json5',
                    '.properties', '.xml', '.gradle', '.env.example',
                    '.sh', '.bash', '.zsh',  # Shell scripts (openssl, ssh-keygen, certbot)
+                   '.env', '.txt',  # Config files (.env) and dependency files (requirements.txt)
                    }
 
 # Test file indicators — findings here are LOWER priority
@@ -407,6 +408,9 @@ def scan_codebase(path: str) -> Dict:
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
         for fname in files:
             ext = os.path.splitext(fname)[1].lower()
+            # Handle dotfiles like .env where splitext returns ('', '.env')
+            if not ext and fname.startswith('.'):
+                ext = fname.lower()  # .env → ".env"
             if ext not in SCAN_EXTENSIONS:
                 continue
 
@@ -418,8 +422,18 @@ def scan_codebase(path: str) -> Dict:
             except Exception:
                 continue
 
+            in_block_comment = False
             for i, line in enumerate(lines, 1):
                 stripped = line.strip()
+
+                # Track C-style block comments /* ... */
+                if '/*' in stripped:
+                    in_block_comment = True
+                if in_block_comment:
+                    if '*/' in stripped:
+                        in_block_comment = False
+                    continue
+
                 if stripped.startswith('#') or stripped.startswith('//') or stripped.startswith('*'):
                     continue
 
@@ -452,6 +466,7 @@ def scan_codebase(path: str) -> Dict:
                                 nist_ref=config['nist_ref'],
                             ))
                             files_with_crypto.add(rel_path)
+                            break  # one match per algorithm per line — no duplicates
 
                 # Detect crypto library imports
                 for lib_pattern, lib_name in [
@@ -507,7 +522,7 @@ def scan_codebase(path: str) -> Dict:
                 {
                     "name": algo,
                     "occurrences": count,
-                    "quantumSafe": algo_counts.get(algo, '') != 'BROKEN',
+                    "quantumSafe": CRYPTO_PATTERNS.get(algo, {}).get('quantum_status', 'BROKEN') == 'SAFE',
                 }
                 for algo, count in algo_counts.items()
             ],
