@@ -1,0 +1,174 @@
+name: PQC Agentic Posture Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+
+jobs:
+  pqc-scan:
+    name: Quantum Crypto Posture Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Copy scanner into workspace
+        run: |
+          cp ${{ github.action_path || '.' }}/pqc_posture.py ./pqc_posture.py 2>/dev/null || true
+          cp ${{ github.action_path || '.' }}/cli.py ./cli.py 2>/dev/null || true
+          cp ${{ github.action_path || '.' }}/pqc_scan_cli.py ./pqc_scan_cli.py 2>/dev/null || true
+
+      - name: Run PQC Posture Scan
+        id: scan
+        continue-on-error: true
+        run: |
+          python3 pqc_scan_cli.py . \
+            --sarif pqc-results.sarif \
+            --cbom cbom.json \
+            --context prod \
+            --fail-on CRITICAL 2>&1 | tee scan-output.txt
+
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+          # Extract summary from JSON for the PR comment
+          python3 -c "
+          import json, sys
+          from pqc_posture import scan_codebase
+          r = scan_codebase('.')
+          prod = [f for f in r['findings'] if f.get('context') != 'test']
+          summary = {
+            'risk_score': r['risk_score'],
+            'risk_level': r['risk_level'],
+            'total_findings': r['total_findings'],
+            'prod_findings': len(prod),
+            'top_5': []
+          }
+          prio = sorted(prod, key=lambda x: {'CRITICAL':0,'HIGH':1,'MEDIUM':2,'LOW':3}.get(x.get('risk','LOW'),3))
+          for f in prio[:5]:
+            summary['top_5'].append({
+              'file': f['file'],
+              'line': f['line'],
+              'algorithm': f['algorithm'],
+              'risk': f['risk'],
+              'migration': f['migration']
+            })
+          with open('scan-summary.json', 'w') as fp:
+            json.dump(summary, fp, indent=2)
+          print(f\"risk-score={r['risk_score']}\")
+          print(f\"risk-level={r['risk_level']}\")
+          print(f\"findings-count={r['total_findings']}\")
+          print(f\"prod-findings={len(prod)}\")
+          " >> "$GITHUB_OUTPUT"
+
+      - name: Upload SARIF to GitHub Code Scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: pqc-results.sarif
+          category: pqc-posture
+
+      - name: Upload CBOM as build artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crypto-bill-of-materials
+          path: cbom.json
+
+      - name: Post PR comment with scan summary
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        env:
+          RISK_SCORE: ${{ steps.scan.outputs.risk-score }}
+          RISK_LEVEL: ${{ steps.scan.outputs.risk-level }}
+          FINDINGS_COUNT: ${{ steps.scan.outputs.findings-count }}
+          PROD_FINDINGS: ${{ steps.scan.outputs.prod-findings }}
+          SCAN_OUTCOME: ${{ steps.scan.outcome }}
+        with:
+          script: |
+            const fs = require('fs');
+            const riskScore = process.env.RISK_SCORE || '?';
+            const riskLevel = process.env.RISK_LEVEL || '?';
+            const findingsCount = process.env.FINDINGS_COUNT || '?';
+            const prodFindings = process.env.PROD_FINDINGS || '?';
+            const outcome = process.env.SCAN_OUTCOME;
+
+            const statusIcon = outcome === 'success' ? 'PASS' : 'FAIL';
+
+            let top5 = '';
+            try {
+              const summary = JSON.parse(fs.readFileSync('scan-summary.json', 'utf8'));
+              if (summary.top_5 && summary.top_5.length > 0) {
+                top5 = '\n### Top Findings\n\n';
+                top5 += '| File | Line | Algorithm | Risk | Migration |\n';
+                top5 += '|------|------|-----------|------|-----------|\n';
+                for (const f of summary.top_5) {
+                  top5 += `| \`${f.file}\` | ${f.line} | ${f.algorithm} | ${f.risk} | ${f.migration} |\n`;
+                }
+              }
+            } catch (e) {
+              // scan-summary.json may not exist if scan failed early
+            }
+
+            const body = [
+              `## PQC Posture Scan Results`,
+              '',
+              '| Metric | Value |',
+              '|--------|-------|',
+              `| **Risk Score** | ${riskScore}/100 |`,
+              `| **Risk Level** | ${riskLevel} |`,
+              `| **Total Findings** | ${findingsCount} |`,
+              `| **Production Findings** | ${prodFindings} |`,
+              `| **Status** | ${statusIcon} |`,
+              top5,
+              '',
+              '> Findings are annotated in the **Code Scanning** tab with NIST PQC migration guidance.',
+              '> CBOM (Crypto Bill of Materials) is available as a build artifact.',
+              '',
+              '---',
+              '*[PQC Posture Scanner](https://github.com/Miles0sage/quantum-mcp)*',
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const marker = 'PQC Posture Scan Results';
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body,
+              });
+            }
+
+      - name: Fail if CRITICAL findings found
+        if: steps.scan.outcome == 'failure'
+        run: |
+          echo "::error::PQC scan failed — CRITICAL quantum-vulnerable cryptography detected"
+          echo "Risk level: ${{ steps.scan.outputs.risk-level }} (score: ${{ steps.scan.outputs.risk-score }})"
+          exit 1

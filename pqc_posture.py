@@ -228,6 +228,81 @@ CRYPTO_PATTERNS = {
         "nist_ref": "NIST SP 800-131A",
     },
 
+    # ═══ SSH (quantum BREAKS these) ═══
+    "SSH RSA/ECDSA Keys": {
+        "patterns": [
+            r'ssh-rsa\b',  # RSA host/auth keys
+            r'ecdsa-sha2-nistp',  # ECDSA SSH keys
+            r'RSAAuthentication\s+yes',
+            r'PubkeyAcceptedAlgorithms.*ssh-rsa',
+            r'HostKeyAlgorithms.*ssh-rsa',
+            r'paramiko\.RSAKey',
+            r'paramiko\.ECDSAKey',
+            r'ssh\.ParsePrivateKey',  # Go SSH
+            r'kex_algorithms.*diffie-hellman',
+        ],
+        "category": "key_exchange",
+        "risk": "CRITICAL",
+        "quantum_status": "BROKEN",
+        "migration": "SSH keys: Ed448 short-term, ML-DSA when OpenSSH supports it. KEX: sntrup761x25519",
+        "nist_ref": "NIST SP 800-131A, draft-ietf-sshm-pq",
+    },
+
+    # ═══ CERTIFICATES (quantum BREAKS RSA/ECDSA certs) ═══
+    "X.509 RSA/ECDSA Certificates": {
+        "patterns": [
+            r'openssl\s+req.*-newkey\s+rsa',  # openssl req -newkey rsa:2048
+            r'openssl\s+x509',  # x509 cert operations
+            r'keytool.*-genkeypair.*RSA',  # Java keytool
+            r'X509Certificate',  # Java/C# X.509
+            r'x509\.CreateCertificate',  # Go x509
+            r'certbot.*--rsa-key-size',  # Let's Encrypt RSA
+            r'CERTIFICATE_VERIFY_FAILED',  # cert validation
+        ],
+        "category": "signature",
+        "risk": "HIGH",
+        "quantum_status": "BROKEN",
+        "migration": "Hybrid certificates (X.509 with ML-DSA + ECDSA dual-signed)",
+        "nist_ref": "NIST SP 800-208",
+    },
+
+    # ═══ WEB SERVER TLS CONFIG ═══
+    "Weak TLS Server Config": {
+        "patterns": [
+            r'ssl_protocols\s+.*TLSv1[^.2-3]',  # nginx ssl_protocols
+            r'ssl_ciphers\s+.*(?:RC4|DES|MD5|NULL)',  # nginx weak ciphers
+            r'SSLProtocol\s+.*TLSv1\b',  # Apache SSLProtocol
+            r'SSLCipherSuite\s+.*(?:RC4|DES|NULL)',  # Apache weak ciphers
+            r'ssl-min-ver\s+TLSv1\.0',  # HAProxy
+            r'minVersion.*TLS10',  # Traefik
+            r'tls_minimum_protocol_version.*TLSv1_0',  # Envoy
+        ],
+        "category": "protocol",
+        "risk": "CRITICAL",
+        "quantum_status": "BROKEN",
+        "migration": "TLS 1.3 minimum, remove weak cipher suites",
+        "nist_ref": "NIST SP 800-52 Rev 2",
+    },
+
+    # ═══ DEPENDENCY CONFIG PATTERNS ═══
+    "Crypto Dependencies": {
+        "patterns": [
+            r'pycryptodome',  # Python crypto lib
+            r'pyOpenSSL',  # Python OpenSSL binding
+            r'"bcrypt"',  # npm bcrypt (not quantum-broken but track)
+            r'bouncycastle',  # Java crypto provider
+            r'jasypt',  # Java encryption
+            r'"ring"',  # Rust crypto crate
+            r'golang\.org/x/crypto/ssh',  # Go SSH crypto
+            r'golang\.org/x/crypto/ed25519',  # Go Ed25519
+        ],
+        "category": "key_exchange",
+        "risk": "MEDIUM",
+        "quantum_status": "WEAKENED",
+        "migration": "Track library versions; plan upgrade to PQC-enabled releases",
+        "nist_ref": "NIST IR 8547",
+    },
+
     # ═══ PROTOCOLS ═══
     "TLS 1.0/1.1": {
         "patterns": [

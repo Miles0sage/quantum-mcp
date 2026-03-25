@@ -16,11 +16,11 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/Miles0sage/quantum-mcp",
-    py_modules=["pqc_posture", "cli"],
+    py_modules=["pqc_posture", "pqc_scan_cli"],
     python_requires=">=3.8",
     entry_points={
         "console_scripts": [
-            "pqc-scan=cli:main",
+            "pqc-scan=pqc_scan_cli:main",
         ],
     },
     classifiers=[

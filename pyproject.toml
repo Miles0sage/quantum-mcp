@@ -30,7 +30,7 @@ classifiers = [
 ]
 
 [project.scripts]
-pqc-scan = "cli:main"
+pqc-scan = "pqc_scan_cli:main"
 
 [project.urls]
 Homepage = "https://github.com/Miles0sage/quantum-mcp"
@@ -38,4 +38,4 @@ Homepage = "https://github.com/Miles0sage/quantum-mcp"
 Source = "https://github.com/Miles0sage/quantum-mcp"
 
 [tool.setuptools]
-py-modules = ["pqc_posture", "cli"]
+py-modules = ["pqc_posture", "pqc_scan_cli"]
