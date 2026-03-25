@@ -22,8 +22,10 @@ class CryptoFinding:
     line: int
     algorithm: str
     category: str  # key_exchange, signature, hash, symmetric, protocol
-    risk: str  # CRITICAL, HIGH, MEDIUM, LOW
+    risk: str  # CRITICAL, HIGH, MEDIUM, LOW (adjusted for context)
+    raw_risk: str  # original risk before context adjustment
     quantum_status: str  # BROKEN, WEAKENED, SAFE
+    context: str  # test, config, import, operation, reference, comment
     usage: str  # what the code is actually doing
     migration: str  # what to replace it with
     nist_ref: str  # NIST standard reference
@@ -246,6 +248,46 @@ SCAN_EXTENSIONS = {'.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.go', '.rs',
                    '.rb', '.php', '.cs', '.c', '.cpp', '.h', '.yaml', '.yml',
                    '.toml', '.cfg', '.ini', '.conf'}
 
+# Test file indicators — findings here are LOWER priority
+TEST_INDICATORS = {'test_', '_test.', 'tests/', 'test/', 'spec/', '_spec.',
+                   'mock', 'fixture', 'conftest', '__tests__', 'testing/'}
+
+
+def _is_test_file(filepath: str) -> bool:
+    """Detect if a file is test/fixture code vs production."""
+    lower = filepath.lower()
+    return any(ind in lower for ind in TEST_INDICATORS)
+
+
+def _context_risk_multiplier(finding_risk: str, filepath: str, line_content: str) -> tuple:
+    """Adjust risk based on context. Returns (adjusted_risk, context_label)."""
+    is_test = _is_test_file(filepath)
+    lower_line = line_content.lower()
+
+    # Test code = demote risk
+    if is_test:
+        demoted = {"CRITICAL": "MEDIUM", "HIGH": "LOW", "MEDIUM": "LOW", "LOW": "LOW"}
+        return demoted[finding_risk], "test"
+
+    # Comments / docstrings mentioning crypto aren't real usage
+    if any(marker in lower_line for marker in ['todo', 'fixme', 'deprecated', 'example', 'sample']):
+        return "LOW", "comment"
+
+    # Config files with crypto settings = HIGH (these affect production)
+    if filepath.endswith(('.yaml', '.yml', '.toml', '.cfg', '.ini', '.conf')):
+        return finding_risk, "config"
+
+    # Import statements = the library is USED, real risk
+    if any(kw in lower_line for kw in ['import ', 'require(', 'from ', 'use ']):
+        return finding_risk, "import"
+
+    # Actual crypto operations = highest risk
+    if any(kw in lower_line for kw in ['generate', 'sign(', 'verify(', 'encrypt', 'decrypt',
+                                        'keygen', 'private_key', 'public_key', '.new(']):
+        return finding_risk, "operation"
+
+    return finding_risk, "reference"
+
 
 def scan_codebase(path: str) -> Dict:
     """Full crypto inventory scan with CBOM output."""
@@ -279,13 +321,18 @@ def scan_codebase(path: str) -> Dict:
                     for pattern in config['patterns']:
                         if re.search(pattern, line):
                             rel_path = os.path.relpath(fpath, path)
+                            adjusted_risk, context = _context_risk_multiplier(
+                                config['risk'], rel_path, stripped
+                            )
                             findings.append(CryptoFinding(
                                 file=rel_path,
                                 line=i,
                                 algorithm=algo_name,
                                 category=config['category'],
-                                risk=config['risk'],
+                                risk=adjusted_risk,
+                                raw_risk=config['risk'],
                                 quantum_status=config['quantum_status'],
+                                context=context,
                                 usage=stripped[:120],
                                 migration=config['migration'],
                                 nist_ref=config['nist_ref'],
@@ -309,18 +356,26 @@ def scan_codebase(path: str) -> Dict:
 
     elapsed_ms = int((time.time() - start) * 1000)
 
-    # Risk scoring
+    # Risk scoring — production code weighted 3x vs test code
+    prod_findings = [f for f in findings if f.context != 'test']
+    test_findings = [f for f in findings if f.context == 'test']
+
     risk_counts = Counter(f.risk for f in findings)
     category_counts = Counter(f.category for f in findings)
     algo_counts = Counter(f.algorithm for f in findings)
     status_counts = Counter(f.quantum_status for f in findings)
 
-    # Risk score (0-100, higher = more exposed)
+    prod_risk = Counter(f.risk for f in prod_findings)
+    test_risk = Counter(f.risk for f in test_findings)
+
+    # Risk score weighted: production findings count 3x
     risk_score = min(100, (
-        risk_counts.get('CRITICAL', 0) * 25 +
-        risk_counts.get('HIGH', 0) * 10 +
-        risk_counts.get('MEDIUM', 0) * 3 +
-        risk_counts.get('LOW', 0) * 1
+        prod_risk.get('CRITICAL', 0) * 25 +
+        prod_risk.get('HIGH', 0) * 10 +
+        prod_risk.get('MEDIUM', 0) * 3 +
+        prod_risk.get('LOW', 0) * 1 +
+        test_risk.get('CRITICAL', 0) * 3 +  # test findings count much less
+        test_risk.get('HIGH', 0) * 1
     ))
 
     # CBOM (Crypto Bill of Materials)
@@ -417,18 +472,40 @@ def print_report(result: Dict):
             print(f"    - {lib}")
         print()
 
-    # Top findings with migration paths
-    print(f"  MIGRATION PRIORITY (top 10):")
-    print(f"  {'Risk':10s} {'Algorithm':20s} {'File':30s} {'Migration':30s}")
-    print(f"  {'-'*90}")
+    # Context breakdown
+    context_counts = Counter(f.get('context', '?') for f in result.get('findings', []))
+    if context_counts:
+        print(f"  BY CONTEXT:")
+        for ctx, cnt in sorted(context_counts.items(), key=lambda x: -x[1]):
+            label = {"test": "Test code (demoted)", "operation": "REAL crypto ops",
+                     "import": "Library imports", "config": "Config files",
+                     "reference": "Code references", "comment": "Comments/docs"}.get(ctx, ctx)
+            print(f"    {label:30s} {cnt}")
+        print()
+
+    # Production-only findings (filter out test)
+    prod_findings = [f for f in result.get('findings', []) if f.get('context') != 'test']
+    test_findings = [f for f in result.get('findings', []) if f.get('context') == 'test']
+    print(f"  PRODUCTION vs TEST:")
+    print(f"    Production findings: {len(prod_findings)} (ACTION REQUIRED)")
+    print(f"    Test-only findings:  {len(test_findings)} (lower priority)")
+    print()
+
+    # Top findings with migration paths (production only)
+    print(f"  MIGRATION PRIORITY — PRODUCTION CODE (top 10):")
+    print(f"  {'Risk':10s} {'Context':10s} {'Algorithm':18s} {'File':28s} {'Migration':25s}")
+    print(f"  {'-'*95}")
     seen = set()
     count = 0
     for f in result['migration_priority']:
+        if f.get('context') == 'test':
+            continue
         key = f"{f['algorithm']}:{f['file']}"
         if key in seen:
             continue
         seen.add(key)
-        print(f"  {f['risk']:10s} {f['algorithm']:20s} {f['file'][:30]:30s} {f['migration'][:30]}")
+        ctx = f.get('context', '?')[:10]
+        print(f"  {f['risk']:10s} {ctx:10s} {f['algorithm'][:18]:18s} {f['file'][:28]:28s} {f['migration'][:25]}")
         count += 1
         if count >= 10:
             break
