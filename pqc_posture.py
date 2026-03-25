@@ -240,6 +240,7 @@ CRYPTO_PATTERNS = {
             r'paramiko\.ECDSAKey',
             r'ssh\.ParsePrivateKey',  # Go SSH
             r'kex_algorithms.*diffie-hellman',
+            r'KexAlgorithms.*diffie-hellman',  # sshd_config KexAlgorithms directive
         ],
         "category": "key_exchange",
         "risk": "CRITICAL",
@@ -258,6 +259,10 @@ CRYPTO_PATTERNS = {
             r'x509\.CreateCertificate',  # Go x509
             r'certbot.*--rsa-key-size',  # Let's Encrypt RSA
             r'CERTIFICATE_VERIFY_FAILED',  # cert validation
+            r'openssl\s+req',  # openssl req (any form)
+            r'certbot.*--rsa-key-size',  # Let's Encrypt RSA key size
+            r'keytool.*-genkeypair',  # Java keytool (any algo)
+            r'openssl_privatekey',  # Ansible crypto module
         ],
         "category": "signature",
         "risk": "HIGH",
@@ -292,7 +297,7 @@ CRYPTO_PATTERNS = {
             r'"bcrypt"',  # npm bcrypt (not quantum-broken but track)
             r'bouncycastle',  # Java crypto provider
             r'jasypt',  # Java encryption
-            r'"ring"',  # Rust crypto crate
+            r'ring::',  # Rust ring crate (ring::signature, ring::rand)
             r'golang\.org/x/crypto/ssh',  # Go SSH crypto
             r'golang\.org/x/crypto/ed25519',  # Go Ed25519
         ],
@@ -343,7 +348,9 @@ SKIP_DIRS = {'.git', 'node_modules', '__pycache__', '.venv', 'venv', 'dist',
 SCAN_EXTENSIONS = {'.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.go', '.rs',
                    '.rb', '.php', '.cs', '.c', '.cpp', '.h', '.yaml', '.yml',
                    '.toml', '.cfg', '.ini', '.conf', '.tf', '.hcl', '.json5',
-                   '.properties', '.xml', '.gradle', '.env.example'}
+                   '.properties', '.xml', '.gradle', '.env.example',
+                   '.sh', '.bash', '.zsh',  # Shell scripts (openssl, ssh-keygen, certbot)
+                   }
 
 # Test file indicators — findings here are LOWER priority
 TEST_INDICATORS = {'test_', '_test.', 'tests/', 'test/', 'spec/', '_spec.',
