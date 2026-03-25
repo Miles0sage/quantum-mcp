@@ -52,6 +52,8 @@ CRYPTO_PATTERNS = {
             r'RsaPublicKey::from',  # Rust rsa crate
             r'RSA_2048',  # AWS KMS key spec
             r'RSA_4096',  # AWS KMS key spec
+            r'algorithm\s*=\s*"RSA"',  # Terraform/config: algorithm = "RSA"
+            r'key_type\s*=\s*"RSA"',  # Config: key_type = "RSA"
         ],
         "category": "key_exchange",
         "risk": "CRITICAL",
