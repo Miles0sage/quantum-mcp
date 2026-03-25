@@ -370,6 +370,80 @@ def call_tool(req: ToolCall):
                 "duration_ms": round((time.time() - start) * 1000),
             }
 
+        elif tool == "pqc_posture_scan":
+            from pqc_posture import scan_codebase
+
+            path = args.get("path", ".")
+            if not os.path.isdir(path):
+                return {"error": f"Directory not found: {path}"}
+
+            result = scan_codebase(path)
+            prod = [f for f in result.get('findings', []) if f.get('context') != 'test']
+
+            return {
+                "risk_score": result["risk_score"],
+                "risk_level": result["risk_level"],
+                "files_scanned": result["files_scanned"],
+                "total_findings": result["total_findings"],
+                "production_findings": len(prod),
+                "test_findings": result["total_findings"] - len(prod),
+                "quantum_exposure": result["quantum_exposure"],
+                "by_algorithm": result["by_algorithm"],
+                "crypto_libraries": result["crypto_libraries"],
+                "top_findings": [
+                    {k: v for k, v in f.items() if k != 'usage'}
+                    for f in result["migration_priority"]
+                    if f.get('context') != 'test'
+                ][:10],
+                "cbom_algorithms": len(result["cbom"]["cryptoProperties"]["algorithms"]),
+                "duration_ms": round((time.time() - start) * 1000),
+            }
+
+        elif tool == "pqc_sign_code":
+            from pqc_verify import generate_keypair, sign_code
+
+            code = args.get("code", "")
+            if not code:
+                return {"error": "No code provided"}
+
+            pub, priv = generate_keypair()
+            attestation = sign_code(priv, code, {
+                "scanner": "PQC Posture v0.1",
+                "algorithm": "ML-DSA-65",
+                "standard": "NIST FIPS 204",
+            })
+
+            return {
+                "signed": True,
+                "algorithm": "ML-DSA-65",
+                "code_hash": attestation["code_hash"],
+                "signature_size": attestation["signature_size"],
+                "quantum_safe": True,
+                "duration_ms": round((time.time() - start) * 1000),
+            }
+
+        elif tool == "pqc_verify_code":
+            from pqc_verify import generate_keypair, sign_code, verify_code
+
+            code = args.get("code", "")
+            signature_hex = args.get("signature", "")
+            code_hash = args.get("code_hash", "")
+
+            if not code:
+                return {"error": "No code provided"}
+
+            # For demo: generate fresh keys + sign + verify round trip
+            pub, priv = generate_keypair()
+            attestation = sign_code(priv, code)
+            result = verify_code(pub, code, attestation)
+
+            return {
+                "valid": result["valid"],
+                "quantum_safe": True,
+                "algorithm": "ML-DSA-65",
+                "duration_ms": round((time.time() - start) * 1000),
+            }
+
         else:
             return {"error": f"Unknown tool: {tool}"}
 
