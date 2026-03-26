@@ -1,2 +1,0 @@
-pqc_posture
-pqc_scan_cli
