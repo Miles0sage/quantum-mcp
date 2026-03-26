@@ -516,7 +516,7 @@ def scan_codebase(path: str) -> Dict:
         "version": 1,
         "metadata": {
             "timestamp": time.strftime('%Y-%m-%dT%H:%M:%SZ'),
-            "tools": [{"name": "PQC Posture Scanner", "version": "0.1.2"}],
+            "tools": [{"name": "PQC Posture Scanner", "version": "0.2.0"}],
             "component": {"name": os.path.basename(path), "type": "application"},
         },
         "cryptoProperties": {
@@ -532,7 +532,7 @@ def scan_codebase(path: str) -> Dict:
         },
     }
 
-    return {
+    result_dict = {
         "scan_path": path,
         "files_scanned": files_scanned,
         "files_with_crypto": len(files_with_crypto),
@@ -558,6 +558,54 @@ def scan_codebase(path: str) -> Dict:
             )
         ][:20],
     }
+    result_dict["grade"] = grade_result(result_dict)
+    return result_dict
+
+
+GRADE_THRESHOLDS = [
+    (0, "A+"),
+    (5, "A"),
+    (15, "B+"),
+    (25, "B"),
+    (40, "C+"),
+    (50, "C"),
+    (65, "D+"),
+    (80, "D"),
+    (90, "F+"),
+    (100, "F"),
+]
+
+# Ordered from best to worst for comparison
+GRADE_ORDER = ["A+", "A", "B+", "B", "C+", "C", "D+", "D", "F+", "F"]
+
+
+def grade_result(result: dict) -> str:
+    """Convert risk_score to a letter grade.
+
+    - 0: A+ (quantum-safe, zero findings)
+    - 1-5: A (minimal exposure)
+    - 6-15: B+
+    - 16-25: B (low exposure)
+    - 26-40: C+
+    - 41-50: C (moderate exposure)
+    - 51-65: D+
+    - 66-80: D (high exposure)
+    - 81-90: F+
+    - 91-100: F (critical exposure)
+    """
+    score = result.get("risk_score", 0)
+    for threshold, grade in GRADE_THRESHOLDS:
+        if score <= threshold:
+            return grade
+    return "F"
+
+
+def grade_is_worse_or_equal(grade: str, threshold: str) -> bool:
+    """Return True if *grade* is equal to or worse than *threshold*."""
+    try:
+        return GRADE_ORDER.index(grade) >= GRADE_ORDER.index(threshold)
+    except ValueError:
+        return False
 
 
 def print_report(result: Dict):
@@ -566,11 +614,13 @@ def print_report(result: Dict):
     print(f"  PQC POSTURE REPORT — {result['scan_path']}")
     print(f"{'='*70}\n")
 
-    # Risk gauge
+    # Grade + Risk gauge
     score = result['risk_score']
     level = result['risk_level']
+    grade = result.get('grade', grade_result(result))
     bar_len = score // 2
     bar = '#' * bar_len + '-' * (50 - bar_len)
+    print(f"  QUANTUM RISK GRADE: {grade} ({score}/100)")
     print(f"  QUANTUM RISK SCORE: {score}/100 [{level}]")
     print(f"  [{bar}]")
     print()

@@ -5,6 +5,8 @@ PQC Posture Scanner — CLI entry point.
 Usage:
     pqc-scan .                          Scan current directory
     pqc-scan /path/to/project           Scan specific path
+    pqc-scan --tls example.com          Scan a TLS endpoint
+    pqc-scan --tls example.com:8443     Scan TLS on custom port
     pqc-scan . --json                   JSON output
     pqc-scan . --cbom cbom.json         Save CBOM to file
     pqc-scan . --sarif out.sarif        SARIF output for GitHub Code Scanning
@@ -20,7 +22,7 @@ import os
 import sys
 import time
 
-from pqc_posture import scan_codebase, print_report
+from pqc_posture import scan_codebase, print_report, grade_result, grade_is_worse_or_equal, GRADE_ORDER
 
 
 RISK_LEVELS = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
@@ -165,6 +167,11 @@ def main():
         help="Directory to scan (default: current directory)",
     )
     parser.add_argument(
+        "--tls",
+        metavar="HOST[:PORT]",
+        help="Scan a TLS endpoint instead of a codebase (e.g. example.com or example.com:8443)",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         dest="json_output",
@@ -204,8 +211,52 @@ def main():
         default=None,
         help="Exit with code 1 if findings exist at this level or above (for CI)",
     )
+    parser.add_argument(
+        "--fail-on-grade",
+        choices=GRADE_ORDER,
+        default=None,
+        metavar="GRADE",
+        help="Exit with code 1 if grade is this or worse (e.g. --fail-on-grade C). Choices: " + ", ".join(GRADE_ORDER),
+    )
 
     args = parser.parse_args()
+
+    # ── TLS endpoint scan mode ──
+    if args.tls:
+        from tls_scanner import scan_tls, print_tls_report, _parse_host_port
+
+        host, port = _parse_host_port(args.tls)
+        result = scan_tls(host, port)
+
+        # Apply min-risk filter
+        if args.min_risk and args.min_risk in RISK_LEVELS:
+            threshold = RISK_LEVELS[args.min_risk]
+            result["findings"] = [
+                f for f in result["findings"]
+                if RISK_LEVELS.get(f.get("risk", "LOW"), 3) <= threshold
+            ]
+            result["total_findings"] = len(result["findings"])
+            result["migration_priority"] = sorted(
+                result["findings"],
+                key=lambda x: RISK_LEVELS.get(x.get("risk", "LOW"), 3),
+            )[:20]
+
+        # Determine output format
+        output_format = args.format
+        if output_format is None:
+            output_format = "json" if args.json_output else "text"
+
+        if output_format == "json":
+            print(json.dumps(result, indent=2))
+        else:
+            print_tls_report(result)
+
+        # CI fail-on check
+        if args.fail_on and _has_findings_at_level(result, args.fail_on):
+            sys.exit(1)
+        return
+
+    # ── Codebase scan mode ──
 
     # Resolve path
     scan_path = os.path.abspath(args.path)
@@ -255,6 +306,13 @@ def main():
     # CI fail-on check
     if args.fail_on and _has_findings_at_level(result, args.fail_on):
         sys.exit(1)
+
+    # CI fail-on-grade check
+    if args.fail_on_grade:
+        actual_grade = result.get("grade", grade_result(result))
+        if grade_is_worse_or_equal(actual_grade, args.fail_on_grade):
+            print(f"\nGrade {actual_grade} is {args.fail_on_grade} or worse — failing.", file=sys.stderr)
+            sys.exit(1)
 
 
 if __name__ == "__main__":
