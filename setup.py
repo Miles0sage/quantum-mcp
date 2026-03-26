@@ -9,7 +9,7 @@ with open(os.path.join(here, "README.md"), encoding="utf-8") as f:
 
 setup(
     name="pqc-posture",
-    version="0.3.0",
+    version="0.4.0",
     author="Miles Thompson",
     author_email="miles@overseerclaw.uk",
     description="Post-Quantum Cryptography Posture Scanner — find quantum-vulnerable crypto in your codebase",

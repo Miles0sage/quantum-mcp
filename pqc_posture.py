@@ -468,8 +468,25 @@ def _check_line_suppression(line: str, algo_name: str) -> bool:
     return False
 
 
-def scan_codebase(path: str, show_suppressed: bool = False) -> Dict:
-    """Full crypto inventory scan with CBOM output."""
+def scan_codebase(path: str, show_suppressed: bool = False, use_ast: bool = False) -> Dict:
+    """Full crypto inventory scan with CBOM output.
+
+    Args:
+        path: Directory to scan.
+        show_suppressed: Include suppressed findings in output.
+        use_ast: When True, run AST analysis on .py files in addition to regex.
+            AST catches alias-aware imports, multi-line calls, variable-tracked
+            crypto, and argument inspection that regex misses.
+    """
+    # Lazy import AST analyzer only when needed
+    ast_analyze = None
+    if use_ast:
+        try:
+            from ast_analyzer import analyze_python_ast
+            ast_analyze = analyze_python_ast
+        except ImportError:
+            pass  # Fall back to regex-only
+
     start = time.time()
     findings = []
     suppressed_findings = []
@@ -575,6 +592,51 @@ def scan_codebase(path: str, show_suppressed: bool = False) -> Dict:
                 ]:
                     if re.search(lib_pattern, code_part):
                         crypto_libs_found.add(lib_name)
+
+    # ── AST augmentation for .py files ────────────────────────────────
+    if ast_analyze is not None:
+        # Build dedup set from regex findings: (file, line, algorithm)
+        existing_keys = {(f.file, f.line, f.algorithm) for f in findings}
+
+        for root_dir, dirs, files_in_dir in os.walk(path):
+            dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+            for fname in files_in_dir:
+                if not fname.endswith('.py'):
+                    continue
+                fpath = os.path.join(root_dir, fname)
+                rel_path = os.path.relpath(fpath, path)
+
+                # Respect .pqcignore
+                if pqcignore_patterns and _matches_pqcignore(rel_path, pqcignore_patterns):
+                    continue
+
+                try:
+                    with open(fpath, 'r', errors='ignore') as f:
+                        source = f.read()
+                except Exception:
+                    continue
+
+                ast_findings = ast_analyze(rel_path, source)
+                for af in ast_findings:
+                    key = (af["file"], af["line"], af["algorithm"])
+                    if key not in existing_keys:
+                        existing_keys.add(key)
+                        # Convert AST dict to CryptoFinding for consistency
+                        finding = CryptoFinding(
+                            file=af["file"],
+                            line=af["line"],
+                            algorithm=af["algorithm"],
+                            category=af["category"],
+                            risk=af["risk"],
+                            raw_risk=af["raw_risk"],
+                            quantum_status=af["quantum_status"],
+                            context=af.get("context", "operation"),
+                            usage=af.get("usage", ""),
+                            migration=af["migration"],
+                            nist_ref=af["nist_ref"],
+                        )
+                        findings.append(finding)
+                        files_with_crypto.add(rel_path)
 
     elapsed_ms = int((time.time() - start) * 1000)
 

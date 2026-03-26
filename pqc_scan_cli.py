@@ -24,6 +24,7 @@ import time
 
 from pqc_posture import scan_codebase, print_report, grade_result, grade_is_worse_or_equal, GRADE_ORDER, diff_results
 from html_report import generate_html_report
+from auto_fix import generate_fixes, print_fixes, write_patch, apply_fixes_to_files
 
 
 RISK_LEVELS = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
@@ -235,6 +236,24 @@ def main():
         metavar="FILE",
         help="Compare against a baseline JSON (previous scan) and show diff",
     )
+    parser.add_argument(
+        "--fix",
+        action="store_true",
+        default=False,
+        help="Show suggested PQC migration fixes for each finding",
+    )
+    parser.add_argument(
+        "--fix-patch",
+        metavar="FILE",
+        default=None,
+        help="Write a unified diff patch file with all auto-fixes",
+    )
+    parser.add_argument(
+        "--fix-apply",
+        action="store_true",
+        default=False,
+        help="Apply auto-fixes directly to source files",
+    )
 
     args = parser.parse_args()
 
@@ -358,6 +377,26 @@ def main():
                 sys.exit(1)
             # Skip the normal fail-on check below
             args.fail_on = None
+
+    # ── Auto-fix features ──
+    if args.fix:
+        print_fixes(result, scan_path)
+
+    if args.fix_patch:
+        patch_path = os.path.abspath(args.fix_patch)
+        patch_content = write_patch(result, scan_path, patch_path)
+        patch_lines = len(patch_content.splitlines()) if patch_content else 0
+        print(f"\nPatch written to {patch_path} ({patch_lines} lines)", file=sys.stderr)
+
+    if args.fix_apply:
+        print("\nApplying PQC auto-fixes to source files...", file=sys.stderr)
+        applied = apply_fixes_to_files(result, scan_path)
+        if applied:
+            for rel_path, count in sorted(applied.items()):
+                print(f"  Fixed {count} finding(s) in {rel_path}", file=sys.stderr)
+            print(f"  Total: {sum(applied.values())} fixes applied to {len(applied)} file(s)", file=sys.stderr)
+        else:
+            print("  No auto-fixes applicable.", file=sys.stderr)
 
     # Save CBOM if requested
     if args.cbom:
