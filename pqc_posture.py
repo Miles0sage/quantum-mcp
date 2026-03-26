@@ -377,7 +377,9 @@ def _context_risk_multiplier(finding_risk: str, filepath: str, line_content: str
         return demoted[finding_risk], "test"
 
     # Comments / docstrings mentioning crypto aren't real usage
-    if any(marker in lower_line for marker in ['todo', 'fixme', 'deprecated', 'example', 'sample']):
+    # Use word boundaries to avoid false positives (e.g. "pycryptodome" contains "todo")
+    import re as _re
+    if any(_re.search(r'\b' + marker + r'\b', lower_line) for marker in ['todo', 'fixme', 'deprecated', 'example', 'sample']):
         return "LOW", "comment"
 
     # Config files with crypto settings = HIGH (these affect production)
@@ -514,7 +516,7 @@ def scan_codebase(path: str) -> Dict:
         "version": 1,
         "metadata": {
             "timestamp": time.strftime('%Y-%m-%dT%H:%M:%SZ'),
-            "tools": [{"name": "PQC Posture Scanner", "version": "0.1.0"}],
+            "tools": [{"name": "PQC Posture Scanner", "version": "0.1.2"}],
             "component": {"name": os.path.basename(path), "type": "application"},
         },
         "cryptoProperties": {

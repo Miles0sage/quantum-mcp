@@ -1,5 +1,4 @@
 README.md
-cli.py
 pqc_posture.py
 pqc_scan_cli.py
 pyproject.toml

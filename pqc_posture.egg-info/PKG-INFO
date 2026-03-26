@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: pqc-posture
-Version: 0.1.0
+Version: 0.1.2
 Summary: Post-Quantum Cryptography Posture Scanner — find quantum-vulnerable crypto in your codebase
 Home-page: https://github.com/Miles0sage/quantum-mcp
 Author: Miles Thompson

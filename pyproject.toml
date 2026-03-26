@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pqc-posture"
-version = "0.1.0"
+version = "0.1.2"
 description = "Post-Quantum Cryptography Posture Scanner — find quantum-vulnerable crypto in your codebase"
 readme = "README.md"
 license = {text = "MIT"}
