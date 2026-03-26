@@ -8,18 +8,19 @@ with open(os.path.join(here, "README.md"), encoding="utf-8") as f:
     long_description = f.read()
 
 setup(
-    name="pqc-posture",
-    version="0.4.0",
+    name="qsafe",
+    version="1.0.0",
     author="Miles Thompson",
     author_email="miles@overseerclaw.uk",
-    description="Post-Quantum Cryptography Posture Scanner — find quantum-vulnerable crypto in your codebase",
+    description="Is your code quantum-safe? Scan any codebase for quantum-vulnerable cryptography. Grade A+ to F.",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/Miles0sage/quantum-mcp",
-    py_modules=["pqc_posture", "pqc_scan_cli"],
+    py_modules=["pqc_posture", "pqc_scan_cli", "ast_analyzer", "auto_fix", "tls_scanner", "html_report"],
     python_requires=">=3.8",
     entry_points={
         "console_scripts": [
+            "qsafe=pqc_scan_cli:main",
             "pqc-scan=pqc_scan_cli:main",
         ],
     },
@@ -38,7 +39,7 @@ setup(
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
     ],
-    keywords="post-quantum cryptography security scanner pqc nist migration",
+    keywords="quantum-safe cryptography security scanner pqc nist migration qsafe auto-fix cbom sarif",
     project_urls={
         "Bug Reports": "https://github.com/Miles0sage/quantum-mcp/issues",
         "Source": "https://github.com/Miles0sage/quantum-mcp",
