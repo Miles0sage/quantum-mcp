@@ -266,6 +266,111 @@ cleanup(proj)
 
 
 # ════════════════════════════════════════════════════════════
+# BUG 5: Suppression / ignore comments
+# ════════════════════════════════════════════════════════════
+print("\n" + "="*70)
+print("  BUG 5: Suppression / ignore comments")
+print("="*70)
+
+# 5a: Line with # pqc-posture:ignore is skipped entirely
+proj = make_project({
+    "crypto.py": """
+key = rsa.generate_private_key(65537, 2048)  # pqc-posture:ignore
+other = rsa.generate_private_key(65537, 4096)
+""",
+})
+r = scan_codebase(proj)
+test("# pqc-posture:ignore skips line",
+     r['total_findings'] == 1,
+     f"Expected 1 finding, got {r['total_findings']}")
+test("Suppressed count is 1 for one ignored line",
+     r['suppressed_findings'] == 1,
+     f"Expected suppressed_findings=1, got {r.get('suppressed_findings')}")
+cleanup(proj)
+
+# 5b: // pqc-posture:ignore RSA skips only RSA, still catches MD5
+proj = make_project({
+    "mixed.js": 'var k = RSA_generate_key(2048); var h = crypto.createHash("md5").update("x"); // pqc-posture:ignore RSA\n',
+})
+r = scan_codebase(proj)
+rsa_findings = [f for f in r['findings'] if 'RSA' in f['algorithm']]
+md5_findings = [f for f in r['findings'] if 'MD5' in f['algorithm']]
+test("// pqc-posture:ignore RSA suppresses RSA",
+     len(rsa_findings) == 0,
+     f"Expected 0 RSA findings, got {len(rsa_findings)}")
+test("// pqc-posture:ignore RSA still catches MD5",
+     len(md5_findings) == 1,
+     f"Expected 1 MD5 finding, got {len(md5_findings)}")
+cleanup(proj)
+
+# 5c: # pqc-posture:ignore-file at top of file skips whole file
+proj = make_project({
+    "legacy.py": """# pqc-posture:ignore-file
+import hashlib
+key = rsa.generate_private_key(65537, 2048)
+h = hashlib.md5(b'data')
+""",
+})
+r = scan_codebase(proj)
+test("# pqc-posture:ignore-file skips entire file",
+     r['total_findings'] == 0,
+     f"Expected 0 findings, got {r['total_findings']}: {[f['algorithm'] for f in r['findings']]}")
+cleanup(proj)
+
+# 5d: .pqcignore with vendor/* skips vendor directory
+proj = make_project({
+    ".pqcignore": "vendor/*\n",
+    "vendor/lib.py": """
+key = rsa.generate_private_key(65537, 2048)
+h = hashlib.md5(b'data')
+""",
+    "app.py": """
+key = rsa.generate_private_key(65537, 2048)
+""",
+})
+r = scan_codebase(proj)
+vendor_findings = [f for f in r['findings'] if 'vendor' in f['file']]
+app_findings = [f for f in r['findings'] if 'app.py' in f['file']]
+test(".pqcignore vendor/* skips vendor directory",
+     len(vendor_findings) == 0,
+     f"Expected 0 vendor findings, got {len(vendor_findings)}")
+test(".pqcignore vendor/* still scans app.py",
+     len(app_findings) >= 1,
+     f"Expected >=1 app findings, got {len(app_findings)}")
+cleanup(proj)
+
+# 5e: Suppressed count is correct in result dict
+proj = make_project({
+    "multi.py": """
+key1 = rsa.generate_private_key(65537, 2048)  # pqc-posture:ignore
+key2 = rsa.generate_private_key(65537, 4096)  # pqc-posture:ignore
+key3 = rsa.generate_private_key(65537, 1024)
+h = hashlib.md5(b'x')  # pqc-posture:ignore
+""",
+})
+r = scan_codebase(proj)
+test("Suppressed count correct for 3 ignored lines",
+     r['suppressed_findings'] == 3,
+     f"Expected suppressed_findings=3, got {r.get('suppressed_findings')}")
+test("Remaining findings count correct (1 non-suppressed)",
+     r['total_findings'] == 1,
+     f"Expected 1 finding, got {r['total_findings']}")
+cleanup(proj)
+
+# 5f: show_suppressed=True includes suppressed in output
+proj = make_project({
+    "sup.py": """
+key = rsa.generate_private_key(65537, 2048)  # pqc-posture:ignore
+""",
+})
+r = scan_codebase(proj, show_suppressed=True)
+test("show_suppressed includes suppressed list",
+     len(r.get('suppressed', [])) == 1,
+     f"Expected 1 suppressed entry, got {len(r.get('suppressed', []))}")
+cleanup(proj)
+
+
+# ════════════════════════════════════════════════════════════
 # RESULTS
 # ════════════════════════════════════════════════════════════
 print("\n" + "="*70)

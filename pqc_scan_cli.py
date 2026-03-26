@@ -22,7 +22,8 @@ import os
 import sys
 import time
 
-from pqc_posture import scan_codebase, print_report, grade_result, grade_is_worse_or_equal, GRADE_ORDER
+from pqc_posture import scan_codebase, print_report, grade_result, grade_is_worse_or_equal, GRADE_ORDER, diff_results
+from html_report import generate_html_report
 
 
 RISK_LEVELS = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
@@ -212,11 +213,27 @@ def main():
         help="Exit with code 1 if findings exist at this level or above (for CI)",
     )
     parser.add_argument(
+        "--show-suppressed",
+        action="store_true",
+        default=False,
+        help="Include suppressed findings in output with a SUPPRESSED marker",
+    )
+    parser.add_argument(
         "--fail-on-grade",
         choices=GRADE_ORDER,
         default=None,
         metavar="GRADE",
         help="Exit with code 1 if grade is this or worse (e.g. --fail-on-grade C). Choices: " + ", ".join(GRADE_ORDER),
+    )
+    parser.add_argument(
+        "--html",
+        metavar="FILE",
+        help="Save a self-contained HTML report to file",
+    )
+    parser.add_argument(
+        "--baseline",
+        metavar="FILE",
+        help="Compare against a baseline JSON (previous scan) and show diff",
     )
 
     args = parser.parse_args()
@@ -265,7 +282,7 @@ def main():
         sys.exit(2)
 
     # Scan
-    result = scan_codebase(scan_path)
+    result = scan_codebase(scan_path, show_suppressed=args.show_suppressed)
 
     # Apply filters
     context_filter = args.context if args.context != "all" else None
@@ -287,6 +304,60 @@ def main():
         print(json.dumps(sarif, indent=2))
     else:
         print_report(result)
+
+    # Show suppressed findings if requested
+    if args.show_suppressed and result.get("suppressed"):
+        if output_format == "text":
+            print(f"\n  SUPPRESSED FINDINGS ({len(result['suppressed'])}):")
+            print(f"  {'Risk':10s} {'Algorithm':18s} {'File':28s} {'Line':6s} {'Usage'}")
+            print(f"  {'-'*90}")
+            for f in result["suppressed"]:
+                print(f"  {f['risk']:10s} {f['algorithm'][:18]:18s} {f['file'][:28]:28s} {f['line']:<6d} [SUPPRESSED] {f.get('usage', '')[:40]}")
+            print()
+        elif output_format == "json":
+            # Already included in JSON output via result["suppressed"]
+            pass
+
+    # Save HTML report if requested
+    if args.html:
+        html_path = os.path.abspath(args.html)
+        html_content = generate_html_report(result)
+        with open(html_path, "w") as f:
+            f.write(html_content)
+        print(f"HTML report saved to {html_path}", file=sys.stderr)
+
+    # Baseline diff
+    if args.baseline:
+        baseline_path = os.path.abspath(args.baseline)
+        if not os.path.isfile(baseline_path):
+            print(f"Error: baseline file '{baseline_path}' not found", file=sys.stderr)
+            sys.exit(2)
+        with open(baseline_path, "r") as f:
+            baseline_data = json.load(f)
+        diff = diff_results(result, baseline_data)
+        print(f"\n  BASELINE COMPARISON:", file=sys.stderr)
+        print(f"    {diff['new_count']} new findings (action required)", file=sys.stderr)
+        print(f"    {diff['fixed_count']} fixed findings (good job)", file=sys.stderr)
+        print(f"    {diff['unchanged_count']} unchanged", file=sys.stderr)
+        if diff['new_findings']:
+            print(f"\n  NEW FINDINGS:", file=sys.stderr)
+            for nf in diff['new_findings'][:10]:
+                print(f"    [{nf.get('risk', '?')}] {nf.get('algorithm', '?')} in {nf.get('file', '?')}:{nf.get('line', '?')}", file=sys.stderr)
+        if diff['fixed_findings']:
+            print(f"\n  FIXED FINDINGS:", file=sys.stderr)
+            for ff in diff['fixed_findings'][:10]:
+                print(f"    [{ff.get('risk', '?')}] {ff.get('algorithm', '?')} in {ff.get('file', '?')}:{ff.get('line', '?')}", file=sys.stderr)
+        print(file=sys.stderr)
+        # When baseline is provided, exit code is based on NEW findings only
+        if args.fail_on:
+            new_has_level = any(
+                RISK_LEVELS.get(f.get("risk", "LOW"), 3) <= RISK_LEVELS.get(args.fail_on, 3)
+                for f in diff['new_findings']
+            )
+            if new_has_level:
+                sys.exit(1)
+            # Skip the normal fail-on check below
+            args.fail_on = None
 
     # Save CBOM if requested
     if args.cbom:
