@@ -9,7 +9,7 @@ with open(os.path.join(here, "README.md"), encoding="utf-8") as f:
 
 setup(
     name="qsafe",
-    version="1.0.0",
+    version="1.1.0",
     author="Miles Thompson",
     author_email="miles@overseerclaw.uk",
     description="Is your code quantum-safe? Scan any codebase for quantum-vulnerable cryptography. Grade A+ to F.",

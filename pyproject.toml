@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qsafe"
-version = "1.0.0"
+version = "1.1.0"
 description = "Is your code quantum-safe? Scan any codebase for quantum-vulnerable cryptography. Grade A+ to F."
 readme = "README.md"
 license = {text = "MIT"}
